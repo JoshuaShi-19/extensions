@@ -1,15 +1,12 @@
 import { useState } from 'react'
 import { browser } from 'webextension-polyfill-ts'
-import { getSceneSentence, getSelectedElement } from './lib'
-import { mergeStyleSets, Text, IRenderFunction } from '@fluentui/react'
-import { ActionButton, IButtonProps } from '@fluentui/react/lib/Button';
-import { AddIcon, RingerIcon, RingerOffIcon } from '@fluentui/react-icons-mdl2';
+import { markWords } from './lib'
 import ErrorMessage from './ErrorMessage';
+import config from '../config'
 
 interface WordProps {
 	word: IWord
-	selectText: string
-	parent: Node
+	sceneText: string
 }
 
 export interface IWord {
@@ -42,131 +39,224 @@ interface IScene {
 	create_time: number
 }
 
-export function Word({ word, selectText, parent }: WordProps) {
+export const wordStyles = `
+.word {
+	padding: 4px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	font-size: 14px;
+	row-gap: 1em;
+}
+
+.disabled {
+	cursor: default;
+}
+
+.message {
+	display: flex;
+	flex-direction: row;
+	vertical-align: center;
+	justify-content: space-between;
+}
+
+.head {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-end;
+	justify-content: flex-start;
+	gap: 30px;
+
+}
+
+.head a {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	cursor: pointer;
+}
+
+.head img {
+	width: 18px;
+	height: 18px;
+}
+
+.title {
+	font-weight: 200;
+	font-size: 42px;
+	line-height: 1.0em;
+}
+
+.phonetic {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-start;
+	column-gap: 1.0em;
+	line-height: 1.4em;
+}
+
+img.play {
+	width: 14px;
+	height: 14px;
+	cursor: pointer;
+}
+
+.defs {
+	line-height: 1.4em;
+}
+
+.defs ul {
+	list-style-type: none;
+	max-width: max-content;
+	padding-left: 0px;
+	margin: 0px;
+}
+
+.times {
+	line-height: 1.4em;
+	background-color: black;
+	color: white;
+}
+
+.scenes {
+	padding-left: 1px;
+	font-weight: 400;
+}
+
+.scenes ul {
+	padding-left: 0px;
+	margin: 0px;
+}
+
+.scenes ul li {
+	list-style-position: inside;
+	list-style-type: disc;
+	line-height: 1.2em;
+	margin-bottom: 4px;
+}
+
+.scenes a {
+	text-decoration: none;
+	color: black;
+}
+
+.scenes a:hover {
+	text-decoration: none;
+	color: #479ef5;
+}
+
+.sceneaction {
+	display: inline-flex;
+	flex-direction: row;
+	column-gap: 10px;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 10px;
+}
+
+.hostname {
+	color: #666;
+}
+
+.forgetButton {
+	opacity: 0;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.forgetButton:hover {
+	opacity: 100;
+	cursor: pointer;
+}
+
+xmet {
+	font-weight: 600;
+}
+`
+
+const addIcon = browser.runtime.getURL("icons/add.svg")
+const addDisabledIcon = browser.runtime.getURL("icons/add_off.svg")
+const bellIcon = browser.runtime.getURL("icons/altert.svg")
+const bellOffIcon = browser.runtime.getURL("icons/alert_off.svg")
+const playIcon = browser.runtime.getURL("icons/speaker.svg")
+
+
+export function Word({ word, sceneText }: WordProps) {
 	const [times, setTimes] = useState(word.edges.meets ? word.edges.meets[0].times : 0)
 	const [scenes, setScenes] = useState(word.edges.meets && word.edges.meets[0].edges.scenes ? word.edges.meets[0].edges.scenes : [])
 	const [met, setMet] = useState(false)
 	const [known, setKnown] = useState(word.edges.meets && word.edges.meets[0].state == 10 ? true : false)
-	const [errorCode, setErrorCode] = useState<number | false>(false)
+	const [errMessage, setErrMessage] = useState<string | false>(false)
+	const addTitle = times == 0 ? "将单词加入生词本，在下次遇见时获得提醒" : "+1"
 
-	async function addScene(id: number, selectText: string, parent: Node) {
-		const text = getSceneSentence(parent, selectText)
-
-		const url = window.location.href
-		const payload = {
-			id: id,
-			url: url,
-			text: text
-		}
-		const { data, errorCode } = await browser.runtime.sendMessage({
-			action: "addScene",
-			scene: payload
-		})
-		if (errorCode) {
-			setErrorCode(errorCode)
-			return
-		}
-
-		const scene = data as IScene
-
-		const selectedElement = getSelectedElement()!
-		selectedElement.setAttribute("data-times", "-".repeat(times + 1))
-
-		setTimes(times + 1)
-		setMet(true)
-		setScenes(scenes.concat(scene))
-	}
-
-	async function toggleKnown(id: number) {
-		const { data: state, errorCode } = await browser.runtime.sendMessage({
-			action: "toggleKnown",
-			id: id,
-		})
-		if (errorCode) {
-			setErrorCode(errorCode)
-			return
-		}
-		if (state == 10) {
-			// known
-			setKnown(true)
-			const selectedElement = getSelectedElement()!
-			selectedElement.setAttribute("data-times", "-".repeat(0))
-		} else if (state == 1) {
-			// active
-			setKnown(false)
-			const selectedElement = getSelectedElement()!
-			selectedElement.setAttribute("data-times", "-".repeat(times))
-		}
-	}
-
-	async function forgetScene(id: number) {
-		const { data, errorCode } = await browser.runtime.sendMessage({
-			action: "forgetScene",
-			id: id,
-		})
-		if (errorCode) {
-			setErrorCode(errorCode)
-			return
-		}
-		const selectedElement = getSelectedElement()!
-		selectedElement.setAttribute("data-times", "-".repeat(times - 1))
-		const newScenes = scenes.filter(scene => scene.id != id)
-		setScenes(newScenes)
-		setTimes(times - 1)
-	}
-
-	if (errorCode) {
-		return <ErrorMessage errorCode={errorCode}></ErrorMessage>
-	}
-
-	const onRenderIcon: IRenderFunction<IButtonProps> = (props: IButtonProps | undefined) => {
-		if (props == undefined) {
-			return null
-		}
-		switch (props.label) {
-			case 'Add':
-				return <AddIcon title="+1"></AddIcon>
-			case 'Ringer':
-				return <RingerIcon title="未掌握"></RingerIcon>
-			case 'RingerOff':
-				return <RingerOffIcon title="已掌握"></RingerOffIcon>
-		}
-		return null
-	}
+	if (errMessage) return (
+		<div className='message'>
+			<ErrorMessage errMessage={errMessage}></ErrorMessage>
+		</div>
+	)
 
 	return (
-		<div className="metwords-word">
-			<div className={styles.head}>
-				<Text className={styles.title}>{word.name}</Text>
-				<ActionButton className={styles.button} onRenderIcon={onRenderIcon} label="Add" disabled={met || known} onClick={() => addScene(word.id, selectText, parent)} />
-				{(times > 0 || known) &&
-					<ActionButton className={styles.button} toggle onRenderIcon={onRenderIcon} label={known ? "RingerOff" : "Ringer"} onClick={() => { toggleKnown(word.id) }} />
+		<div className='word'>
+			<div className="head">
+				<span className="title">{word.name}</span>
+				{(met || known) &&
+					<a>
+						<img src={addDisabledIcon} className='disabled'></img>
+					</a>
+				}
+				{!(met || known) &&
+					<a title={addTitle} onClick={() => addScene(word.id, sceneText)}>
+						<img src={addIcon}></img>
+					</a>
+				}
+				{(times > 0 && !known) &&
+					<a title="标记中" onClick={() => toggleKnown(word.id)}>
+						<img src={bellIcon}></img>
+					</a>
+				}
+				{(times > 0 && known) &&
+					<a title="已掌握" onClick={() => toggleKnown(word.id)}>
+						<img src={bellOffIcon}></img>
+					</a>
 				}
 			</div>
-			<div className="metwords-phonetics">
-				<Text className="metwords-phonetic-label">US</Text><Text className="metwords-phonetic">[{word.us_phonetic}]</Text>
-				<Text className="metwords-phonetic-label">UK</Text><Text className="metwords-phonetic">[{word.uk_phonetic}]</Text>
+			<div className="phonetics">
+				{(word.us_phonetic) &&
+					<div className='phonetic'>
+						<span>US</span><span>[{word.us_phonetic}]</span><img className="play" src={playIcon} onClick={() => playAudio("us", word.name, word.id)}></img>
+					</div>
+				}
+				{(word.uk_phonetic) &&
+					<div className='phonetic'>
+						<span>UK</span><span>[{word.uk_phonetic}]</span><img className="play" src={playIcon} onClick={() => playAudio("uk", word.name, word.id)}></img>
+					</div>
+				}
 			</div>
-			<div className="metwords-defs">
+			<div className="defs">
 				<ul>
 					{word.def_zh.map((def, index) => (
-						<li key={index} className="metwords-def"><Text className="metwords-explain">{def}</Text></li>)
+						<li key={index}><span>{def}</span></li>)
 					)}
 				</ul>
 			</div>
 			{times > 0 &&
-				<span className="metwords-times">遇见 {times} 次</span>
+				<div className="times">
+					<span>标记 {times} 次</span>
+				</div>
 			}
-			<div className="metwords-scenes">
+			<div className="scenes">
 				<ul>
 					{scenes.map((scene) => {
-						const [pre, met, post] = extractScene(scene.text)
 						return (
 							<li key={scene.id}>
-								<a href={scene.url} className="mewords-scene" title={new Date(scene.create_time).toLocaleString('zh-CN')}>
-									{pre}<span dangerouslySetInnerHTML={{ __html: met }}></span>{post}
+								<a href={scene.url} title={new Date(scene.create_time).toLocaleString()}>
+									<span dangerouslySetInnerHTML={{ __html: scene.text }}></span>
 								</a>
-								<Text className="metwords-forget" onClick={() => forgetScene(scene.id)}>✗</Text>
+								<div className="sceneaction">
+									<span className="hostname">({new URL(scene.url).hostname})</span>
+									<span className="forgetButton" onClick={() => forgetScene(scene.id)}>✗</span>
+								</div>
 							</li>
 						)
 					})}
@@ -174,35 +264,71 @@ export function Word({ word, selectText, parent }: WordProps) {
 			</div>
 		</div>
 	)
-}
 
-function extractScene(scene: string) {
-	const re = /<xmet>.+<\/xmet>/
-	const match = re.exec(scene)
-	if (!match) {
-		return ["", scene, ""]
+	function playAudio(label: string, name: string, id: number) {
+		const fileName = name + "-" + id + ".mp3"
+		const fileURL = `${config.audioURL}/${label}/${fileName}`
+		new Audio(fileURL).play()
 	}
-	const met = match[0]
-	const index = match["index"]
-	const postIndex = index + met.length
-	return [scene.slice(0, index), met, scene.slice(postIndex)]
-}
 
-const styles = mergeStyleSets({
-	head: {
-		marginBottom: 12,
-		display: "flex",
-		alignItems: "flex-end"
-	},
-	button: {
-		lineHeight: "1.0",
-		width: 24,
-		height: 16,
-		marginLeft: 16,
-	},
-	title: {
-		fontWeight: 200,
-		fontSize: 42,
-		lineHeight: "1.0",
-	},
-})
+	async function addScene(id: number, sceneText: string) {
+		const url = window.location.href
+		const payload = {
+			id: id,
+			url: url,
+			text: sceneText
+		}
+		const { data, errMessage } = await browser.runtime.sendMessage({
+			action: "addScene",
+			scene: payload
+		})
+		if (errMessage) {
+			setErrMessage(errMessage)
+			return
+		}
+
+		const scene = data as IScene
+
+		setTimes(times + 1)
+		setMet(true)
+		setScenes(scenes.concat(scene))
+
+		await markWords()
+	}
+
+	async function toggleKnown(id: number) {
+		const { data: state, errMessage } = await browser.runtime.sendMessage({
+			action: "toggleKnown",
+			id: id,
+		})
+		if (errMessage) {
+			setErrMessage(errMessage)
+			return
+		}
+		if (state == 10) {
+			// known
+			setKnown(true)
+		} else if (state == 1) {
+			// active
+			setKnown(false)
+		}
+
+		await markWords()
+	}
+
+	async function forgetScene(id: number) {
+		const { data, errMessage } = await browser.runtime.sendMessage({
+			action: "forgetScene",
+			id: id,
+		})
+		if (errMessage) {
+			setErrMessage(errMessage)
+			return
+		}
+		const newScenes = scenes.filter(scene => scene.id != id)
+		setScenes(newScenes)
+		setTimes(times - 1)
+
+		await markWords()
+	}
+}

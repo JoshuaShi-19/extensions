@@ -2,34 +2,28 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import Tip from './Tip';
 import './style.css';
-import { getWord, getWordRanges, WordRange, markWord, markSelected, getSelectedElement } from './lib'
+import { getWord, getSceneSentence, markWords } from './lib'
 import { browser } from 'webextension-polyfill-ts';
-import { Callout, mergeStyleSets, FontWeights } from '@fluentui/react'
-import { Meets } from '../background_scripts/index'
+import { Callout } from '@fluentui/react'
+import { mergeStyleSets } from '@fluentui/react/lib/Styling';
+import { ShadowView } from "shadow-view";
+import { wordStyles } from './Word';
 
 // 1s
 const waitDuration = 1000
 
 async function start() {
-	const meets: Meets = await browser.runtime.sendMessage({
-		action: "getMeets"
-	})
-	let ranges = new Map<string, WordRange>()
-	ranges = getWordRanges(document.getRootNode(), ranges)
-	ranges.forEach((val, key) => {
-		if (meets[key] == undefined) {
-			ranges.delete(key)
-		} else {
-			val.times = meets[key]
-		}
-	})
-	for (let range of ranges.values()) {
-		markWord(range, false)
-	}
+	await markWords()
 
 	document.addEventListener('mouseup', show)
 	document.addEventListener('mousedown', dismiss)
 }
+
+
+// On page loaded update feed notification
+browser.runtime.sendMessage({
+	"action": "updateBadge",
+})
 
 // waiting a while for client side rendered dom ready
 setTimeout(start, waitDuration)
@@ -39,6 +33,7 @@ let _rootDiv: HTMLElement
 const show = async (e: MouseEvent) => {
 	const selection = window.getSelection()
 	if (selection == null) return
+	if (selection.isCollapsed) return
 
 	if (selection.type != "Range") return
 	if (selection.rangeCount != 1) return
@@ -46,34 +41,19 @@ const show = async (e: MouseEvent) => {
 	if (range.collapsed) {
 		return
 	}
-	// don't trim here.
-	const selectText = selection.toString()
+
+	const selectText = selection.toString().trim()
 	const word = getWord(selectText)
 	if (word == "") {
 		return
 	}
 
-	if (range.startContainer.nodeType != Node.TEXT_NODE) {
+	if (range.startContainer.nodeType != Node.TEXT_NODE || range.endContainer.nodeType != Node.TEXT_NODE) {
+		console.log("Selection not supported: range startContainer or endContainer is not text node")
 		return
 	}
 
-	// range changed here.
-	markSelected(range, selectText)
-
-	// range has changed, add the new range to selection.
-	// this fixes Safari selection collapsed issue.
-	selection.removeAllRanges()
-	selection.addRange(range)
-
-	let parent = range.commonAncestorContainer
-	if (range.startContainer == range.endContainer) {
-		parent = range.startContainer.parentNode!
-	}
-
-	// that is: parent's only child is the selected element, so go one upper level.
-	if (parent.firstChild == parent.lastChild) {
-		parent = parent.parentNode!
-	}
+	const sceneText = getSceneSentence(range)
 
 	if (!_rootDiv) {
 		_rootDiv = document.createElement('div')
@@ -83,13 +63,16 @@ const show = async (e: MouseEvent) => {
 	ReactDOM.render(
 		<React.StrictMode>
 			<Callout
-				id="metwords-tip"
+				id="metword-tip"
 				className={styles.callout}
-				role="alertdialog"
+				role="dialog"
 				gapSpace={0}
-				target={`#metword-selected`}
+				target={range.getBoundingClientRect()}
+				hideOverflow={true}
 			>
-				<Tip word={word} selectText={selectText} parent={parent} />
+				<ShadowView styleContent={wordStyles}>
+					<Tip word={word} sceneText={sceneText} />
+				</ShadowView>
 			</Callout>
 		</React.StrictMode>,
 		_rootDiv
@@ -97,32 +80,15 @@ const show = async (e: MouseEvent) => {
 }
 
 const dismiss = (e: MouseEvent | Event) => {
-	const tip = document.getElementById("metwords-tip")
-	if (!tip) { return }
-	if ((tip as Node).contains(e.target as Node)) { return }
-
-	const selectedElement = getSelectedElement()
-	if (!selectedElement) { return }
-	selectedElement.removeAttribute("id")
-
-	ReactDOM.unmountComponentAtNode(_rootDiv)
+	try {
+		ReactDOM.unmountComponentAtNode(_rootDiv)
+	} catch (e) { }
 }
 
 const styles = mergeStyleSets({
-	button: {
-		width: 130,
-	},
 	callout: {
 		display: "block !important",
 		width: 520,
 		padding: '20px 20px',
-	},
-	title: {
-		marginBottom: 12,
-		fontWeight: FontWeights.semilight,
-	},
-	words: {
-		display: 'block',
-		marginTop: 20,
 	},
 })

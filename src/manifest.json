@@ -1,26 +1,31 @@
 {
-	"name": "遇见单词划词翻译",
-	"description": "不背单词，遇见单词。遇见单词是一个划词翻译扩展，标记你不认识的单词，在下次遇见时获得提醒。",
-	"version": "1.0.8",
+	"name": "遇见单词 MetWord",
+	"description": "遇见单词是一个划词翻译扩展，标记你不认识的单词，在下次遇见时获得提醒。",
+	"version": "2.2.1",
 	"manifest_version": 2,
-	"homepage_url": "https://www.metwords.com",
+	"homepage_url": "https://metword.co",
 	"icons": {
-		"48": "./icons/logo@48px.png",
-		"96": "./icons/logo@96px.png",
-		"256": "./icons/logo@256px.png"
+		"512": "./icons/icon.png"
 	},
 	"permissions": [
 		"activeTab",
+		"storage",
 		"http://127.0.0.1/*",
-		"http://words.metaphor.com/*",
-		"https://www.metwords.com/*"
+		"http://localhost/*",
+		"https://*.metword.co/*",
+		"https://*.metnews.co/*"
 	],
 	"background": {
 		"scripts": [
 			"./dist/background_script.js"
 		]
 	},
-	"browser_action": {},
+	"browser_action": {
+		"default_title": "MetWord",
+		"default_icon": {
+			"512": "./icons/icon.png"
+		}
+	},
 	"content_scripts": [
 		{
 			"all_frames": false,
@@ -35,5 +40,8 @@
 			],
 			"run_at": "document_idle"
 		}
+	],
+	"web_accessible_resources": [
+		"icons/*"
 	]
 }

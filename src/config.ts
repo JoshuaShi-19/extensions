@@ -7,21 +7,23 @@ export interface Config {
 const env = process.env.NODE_ENV
 
 const development = {
-	loginURL: "http://words.metaphor.com:9000/account/login",
-	meetsURL: "http://words.metaphor.com:9000/api/meet/times",
-	queryURL: "http://words.metaphor.com:9000/api/word?word=",
-	addSceneURL: "http://words.metaphor.com:9000/api/scene",
-	forgetSceneURL: "http://words.metaphor.com:9000/api/scene?id=",
-	knowURL: "http://words.metaphor.com:9000/api/meet/toggle?id="
+	meetsURL: "http://localhost:8090/api/meet/times",
+	knowURL: "http://localhost:8090/api/meet/toggle?id=",
+	queryURL: "http://localhost:8090/api/word?word=",
+	addSceneURL: "http://localhost:8090/api/scene",
+	forgetSceneURL: "http://localhost:8090/api/scene?id=",
+
+	audioURL: "https://media.metword.co/audio"
 }
 
 const production = {
-	loginURL: "https://www.metwords.com/account/login",
-	meetsURL: "https://www.metwords.com/api/meet/times",
-	queryURL: "https://www.metwords.com/api/word?word=",
-	addSceneURL: "https://www.metwords.com/api/scene",
-	forgetSceneURL: "https://www.metwords.com/api/scene?id=",
-	knowURL: "https://www.metwords.com/api/meet/toggle?id="
+	meetsURL: "https://app.metword.co/api/meet/times",
+	knowURL: "https://app.metword.co/api/meet/toggle?id=",
+	queryURL: "https://app.metword.co/api/word?word=",
+	addSceneURL: "https://app.metword.co/api/scene",
+	forgetSceneURL: "https://app.metword.co/api/scene?id=",
+
+	audioURL: "https://media.metword.co/audio"
 }
 
 const config: Config = {

@@ -1,11 +1,16 @@
 import { browser } from "webextension-polyfill-ts"
 import config from '../config'
 
+const ua = 'MetWord-Extension/2.2.1'
+const meetsStorageKey = "meets"
+
 const meetsURL = config.meetsURL
 const queryURL = config.queryURL
 const addSceneURL = config.addSceneURL
 const forgetSceneURL = config.forgetSceneURL
 const knowURL = config.knowURL
+
+const homeURL = "https://app.metword.co/"
 
 browser.runtime.onMessage.addListener(async (msg) => {
 	switch (msg.action) {
@@ -26,29 +31,9 @@ export interface Meets {
 	[key: string]: number
 }
 
-var valid = false
-var meets: Meets = {}
-
 interface FetchResult {
 	data: any,
-	errorCode: number | false
-}
-
-async function fetchData(url: string, init?: RequestInit): Promise<FetchResult> {
-	try {
-		const res = await fetch(encodeURI(url), init)
-		const errorCode = res.ok ? false : res.status
-		const result = await res.json()
-		return {
-			data: result.data || null,
-			errorCode: errorCode
-		}
-	} catch (err) {
-		return {
-			data: null,
-			errorCode: 499
-		}
-	}
+	errMessage: string | false
 }
 
 async function addScene(scene: any) {
@@ -57,16 +42,14 @@ async function addScene(scene: any) {
 		url: scene.url,
 		text: scene.text
 	}
-	let payload = JSON.stringify(body)
-	let jsonHeaders = new Headers({
-		'Content-Type': 'application/json'
-	})
-
+	const payload = JSON.stringify(body)
 	const result = await fetchData(addSceneURL, {
 		method: "POST",
 		body: payload,
-		headers: jsonHeaders
 	})
+	if (!result.errMessage) {
+		await purgeMeetsCache()
+	}
 	return result
 }
 
@@ -75,6 +58,9 @@ async function toggleKnown(id: number) {
 	const result = await fetchData(url, {
 		method: "POST",
 	})
+	if (!result.errMessage) {
+		await purgeMeetsCache()
+	}
 	return result
 }
 
@@ -83,37 +69,71 @@ async function forgetScene(id: number) {
 	const result = await fetchData(url, {
 		method: "DELETE",
 	})
+	if (!result.errMessage) {
+		await purgeMeetsCache()
+	}
 	return result
 }
 
 async function queryWord(word: string) {
-	// any query invalidate meets cache
-	valid = false
 	const url = queryURL + word
-	const result = await fetchData(url)
+	const result = await fetchData(url, {})
 	return result
 }
 
 async function getMeets() {
-	if (valid) {
-		return meets
-	}
-	try {
-		const resp = await fetch(meetsURL)
-		const result = JSON.parse(await resp.text())
-		meets = result.data || {}
-		valid = true
-	} catch (err) {
-		meets = {}
-		valid = false
-	}
+	const store = await browser.storage.local.get()
+	let meets = store[meetsStorageKey]
+	if (meets) return meets
+
+	const result = await fetchData(meetsURL, {})
+	meets = result.data || {}
+	await browser.storage.local.set({ [meetsStorageKey]: meets })
 	return meets
 }
 
-const hideMark = `xmetword::before { display: none !important; }`
+async function purgeMeetsCache() {
+	await browser.storage.local.remove(meetsStorageKey)
+}
+
+interface FetchResult {
+	data: any,
+	errMessage: string | false
+}
+
+async function fetchData(url: string, init: RequestInit): Promise<FetchResult> {
+	const jsonHeaders = new Headers({
+		// Our Go backend implementation needs 'Accept' header to distinguish between requests, like via JSON or Turbo.
+		'Accept': 'application/json',
+		'Content-Type': "application/json",
+		'X-UA': ua
+	})
+	if (!init.headers) {
+		init.headers = jsonHeaders
+	}
+
+	try {
+		const res = await fetch(encodeURI(url), init)
+		const result = await res.json()
+		return {
+			// We can rely on .message field to distinguish between successful or failed requests, but not on .data field.
+			data: result.data || null,
+			errMessage: result.message || false
+		}
+	} catch (err) {
+		return {
+			data: null,
+			errMessage: "网络异常"
+		}
+	}
+}
 
 browser.browserAction.onClicked.addListener(async () => {
-	await browser.tabs.create({
-		url: "https://www.metwords.com"
-	})
+	try {
+		await browser.tabs.create({
+			url: homeURL
+		})
+	} catch (e) {
+		console.log("Unsupported Tab")
+	}
 })
